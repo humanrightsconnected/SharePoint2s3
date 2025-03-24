@@ -113,9 +113,9 @@ class TestMain(unittest.TestCase):
             # Verify exit was called with error code 1
             mock_exit.assert_called_once_with(1)
 
-    @mock.patch('sharepoint2s3.logging.getLogger')
+    @mock.patch('sharepoint2s3.logger')
     @mock.patch('sharepoint2s3.argparse.ArgumentParser.parse_args')
-    def test_verbose_logging(self, mock_parse_args, mock_get_logger):
+    def test_verbose_logging(self, mock_parse_args, mock_logger):
         """Test that verbose flag sets appropriate logging level"""
         # Mock command line arguments with verbose=True
         args = argparse.Namespace(
@@ -129,10 +129,6 @@ class TestMain(unittest.TestCase):
             verbose=True
         )
         mock_parse_args.return_value = args
-        
-        # Mock logger
-        mock_logger = mock.MagicMock()
-        mock_get_logger.return_value = mock_logger
         
         # Call the main function with the error handled
         with mock.patch('sharepoint2s3.SharePointToS3', side_effect=Exception("Test")):

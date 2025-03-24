@@ -100,7 +100,6 @@ class TestSharePointToS3(unittest.TestCase):
         
         # Mock folder structure
         mock_folder = mock.MagicMock()
-        self.mock_client_context_instance.web.get_folder_by_server_relative_url.return_value = mock_folder
         
         # Mock files in folder
         mock_file1 = mock.MagicMock()
@@ -115,13 +114,23 @@ class TestSharePointToS3(unittest.TestCase):
         }
         mock_folder.files = [mock_file1, mock_file2]
         
-        # Mock subfolders
+        # Mock subfolders - but return empty list to avoid recursion in tests
+        # This will test the recursive call setup without actually recursing
         mock_subfolder = mock.MagicMock()
         mock_subfolder.properties = {
             'ServerRelativeUrl': '/sites/test/Shared Documents/subfolder',
             'Name': 'subfolder'
         }
         mock_folder.folders = [mock_subfolder]
+        
+        # For the first call, allow recursive lookup, but for subfolder return empty lists
+        subfolder_instance = mock.MagicMock()
+        subfolder_instance.files = []
+        subfolder_instance.folders = []
+        self.mock_client_context_instance.web.get_folder_by_server_relative_url.side_effect = [
+            mock_folder,  # First call returns main folder
+            subfolder_instance  # Second call returns subfolder with no files or folders
+        ]
         
         # Call the method
         success_count, error_count = self.sp2s3.copy_folder("/sites/test/Shared Documents")
@@ -130,17 +139,22 @@ class TestSharePointToS3(unittest.TestCase):
         self.assertEqual(success_count, 2)  # Two files successfully copied
         self.assertEqual(error_count, 0)    # No errors
         
-        # Verify the S3 client was called correctly
-        self.mock_s3_client.put_object.assert_any_call(
-            Bucket="test-bucket",
-            Key="test-prefix/Shared Documents/file1.txt",
-            Body=b"test file content"
-        )
-        self.mock_s3_client.put_object.assert_any_call(
-            Bucket="test-bucket",
-            Key="test-prefix/Shared Documents/file2.txt",
-            Body=b"test file content"
-        )
+        # Verify the S3 client was called correctly for all files
+        expected_calls = [
+            mock.call(
+                Bucket="test-bucket",
+                Key="test-prefix/Shared Documents/file1.txt",
+                Body=b"test file content"
+            ),
+            mock.call(
+                Bucket="test-bucket",
+                Key="test-prefix/Shared Documents/file2.txt",
+                Body=b"test file content"
+            )
+        ]
+        
+        self.mock_s3_client.put_object.assert_has_calls(expected_calls, any_order=True)
+        self.assertEqual(self.mock_s3_client.put_object.call_count, 2)
         
         # Verify recursive call
         self.mock_client_context_instance.web.get_folder_by_server_relative_url.assert_any_call(
